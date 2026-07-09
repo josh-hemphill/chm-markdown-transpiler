@@ -1,0 +1,32 @@
+name: Bug report
+description: Report incorrect conversion, emit, or CLI behavior
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Include the `chm-md doctor` summary when possible.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Expected vs actual behavior
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: CLI command
+      placeholder: chm-md convert ./help.chm -o ./out
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Doctor output
+      description: Output of `chm-md doctor <target> --summary`
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: chm-md version
+      placeholder: 0.1.0

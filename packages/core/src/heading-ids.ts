@@ -1,0 +1,122 @@
+import type { HeadingIdEntry } from "@chm-md/shared";
+import type { MarkdownStyleProfile } from "./style-profile.js";
+
+export interface HeadingIdAssignment extends HeadingIdEntry {
+  originalId?: string;
+}
+
+/** Slugify heading text into a URL-safe id fragment. */
+export function slugifyHeading(text: string): string {
+  const slug = text
+    .trim()
+    .toLowerCase()
+    .replace(/['"]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug.length > 0 ? slug : "section";
+}
+
+function headingLevel(tagName: string): number {
+  const match = /^h([1-6])$/i.exec(tagName);
+  return match ? Number.parseInt(match[1] ?? "1", 10) : 1;
+}
+
+/** Assign unique ids to headings and rewrite same-page fragment links. */
+export function assignHeadingIds(document: Document): {
+  assignments: HeadingIdAssignment[];
+  fragmentMap: Map<string, string>;
+} {
+  const assignments: HeadingIdAssignment[] = [];
+  const usedIds = new Set<string>();
+  const fragmentMap = new Map<string, string>();
+
+  const headings = document.querySelectorAll("h1, h2, h3, h4, h5, h6");
+  for (const heading of headings) {
+    const text = heading.textContent?.trim() ?? "";
+    const level = headingLevel(heading.tagName);
+    const existingId = heading.getAttribute("id") ?? heading.getAttribute("name") ?? undefined;
+    const originalId = existingId;
+
+    let baseId = existingId ?? slugifyHeading(text);
+    if (existingId && !usedIds.has(existingId)) {
+      heading.setAttribute("id", existingId);
+      usedIds.add(existingId);
+      assignments.push({ text, level, id: existingId, originalId });
+      if (originalId) {
+        fragmentMap.set(originalId, existingId);
+      }
+      continue;
+    }
+
+    let candidate = baseId;
+    let suffix = 2;
+    while (usedIds.has(candidate)) {
+      candidate = `${baseId}-${suffix}`;
+      suffix += 1;
+    }
+
+    heading.setAttribute("id", candidate);
+    usedIds.add(candidate);
+    assignments.push({ text, level, id: candidate, originalId });
+
+    if (originalId) {
+      fragmentMap.set(originalId, candidate);
+    }
+    if (originalId !== candidate) {
+      fragmentMap.set(candidate, candidate);
+    }
+  }
+
+  for (const anchor of document.querySelectorAll("a[href]")) {
+    const href = anchor.getAttribute("href");
+    if (!href?.startsWith("#")) {
+      continue;
+    }
+    const fragment = href.slice(1);
+    const mapped = fragmentMap.get(fragment);
+    if (mapped && mapped !== fragment) {
+      anchor.setAttribute("href", `#${mapped}`);
+    }
+  }
+
+  return { assignments, fragmentMap };
+}
+
+/** Post-process markdown body for style compliance before lint. */
+export function postProcessMarkdown(
+  markdown: string,
+  profile: MarkdownStyleProfile,
+  options?: { title?: string; demoteH1?: boolean },
+): string {
+  let body = markdown;
+
+  if (profile.expandTabs) {
+    const spaces = " ".repeat(profile.tabWidth);
+    body = body.replace(/\t/g, spaces);
+  }
+
+  if (profile.trimTrailingWhitespace) {
+    body = body
+      .split("\n")
+      .map((line) => line.replace(/[ \t]+$/g, ""))
+      .join("\n");
+  }
+
+  if (profile.collapseExcessBlankLines) {
+    body = body.replace(/\n{4,}/g, "\n\n\n");
+  }
+
+  if (profile.ensureBlankLineBeforeHeadings) {
+    body = body.replace(/([^\n])\n(#{1,6} )/g, "$1\n\n$2");
+  }
+
+  if (profile.demoteDuplicateH1 && options?.demoteH1 !== false && options?.title) {
+    body = body.replace(/^# /m, "## ");
+  }
+
+  if (profile.ensureFinalNewline && !body.endsWith("\n")) {
+    body = `${body}\n`;
+  }
+
+  return body;
+}

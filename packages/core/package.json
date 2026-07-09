@@ -1,0 +1,50 @@
+{
+  "name": "@chm-md/core",
+  "version": "0.1.0",
+  "description": "Convert CHM bundles to MarkdownProject IR",
+  "type": "module",
+  "license": "LGPL-2.1-only",
+  "engines": {
+    "node": ">=24"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/josh-hemphill/chm-markdown-transpiler.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/josh-hemphill/chm-markdown-transpiler#readme",
+  "bugs": {
+    "url": "https://github.com/josh-hemphill/chm-markdown-transpiler/issues"
+  },
+  "keywords": ["chm", "markdown", "vitepress", "documentation", "help"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@chm-md/extract": "workspace:*",
+    "@chm-md/shared": "workspace:*",
+    "@joplin/turndown-plugin-gfm": "catalog:",
+    "gray-matter": "catalog:",
+    "linkedom": "catalog:",
+    "markdownlint": "catalog:",
+    "turndown": "catalog:",
+    "yaml": "catalog:"
+  },
+  "devDependencies": {
+    "@types/turndown": "catalog:"
+  }
+}

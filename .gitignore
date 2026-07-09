@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+out/
+site/
+*.chm
+!fixtures/**/*.chm
+out-project/

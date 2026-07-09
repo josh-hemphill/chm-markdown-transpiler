@@ -1,0 +1,11 @@
+{
+  "title": "PowerCollections",
+  "description": "Example workspace using the PowerCollections CHM fixture",
+  "collections": [
+    {
+      "id": "powercollections",
+      "title": "PowerCollections",
+      "source": "./PowerCollections.chm"
+    }
+  ]
+}
