@@ -1,6 +1,6 @@
 {
   "name": "@chm-md/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "CLI for converting CHM help to Markdown and VitePress sites",
   "type": "module",
   "license": "LGPL-2.1-only",
@@ -16,7 +16,14 @@
   "bugs": {
     "url": "https://github.com/josh-hemphill/chm-markdown-transpiler/issues"
   },
-  "keywords": ["chm", "markdown", "vitepress", "documentation", "help", "cli"],
+  "keywords": [
+    "chm",
+    "markdown",
+    "vitepress",
+    "documentation",
+    "help",
+    "cli"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -31,7 +38,9 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
