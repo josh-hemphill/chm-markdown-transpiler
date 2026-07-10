@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
@@ -24,8 +25,18 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: pnpm
           registry-url: https://registry.npmjs.org
+          # Release publishes should not reuse a dependency cache.
+          package-manager-cache: false
+
+      # setup-node writes an empty //registry...:_authToken= line and also
+      # injects NODE_AUTH_TOKEN into the job env. Both force token auth and
+      # break OIDC trusted publishing / provenance.
+      - name: Prepare npm for OIDC trusted publishing
+        run: |
+          sed -i '/_authToken/d' "${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
+          echo "npm $(npm --version)"
+          echo "node $(node --version)"
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
@@ -34,5 +45,6 @@ jobs:
         run: pnpm release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # Explicitly clear token auth so npm uses OIDC instead.
+          NODE_AUTH_TOKEN: ""
+          NPM_TOKEN: ""
