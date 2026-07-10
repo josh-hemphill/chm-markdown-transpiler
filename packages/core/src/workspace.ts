@@ -15,6 +15,7 @@ import type {
 import { CONVERTER_VERSION } from "@chm-md/shared";
 import { convertChm } from "./convert-chm.js";
 import type { ConvertChmOptions } from "./convert-chm.js";
+import { loadMarkdownCollection, isMarkdownDocsDir } from "./load-markdown-collection.js";
 import { loadProject } from "./load-project.js";
 
 const WORKSPACE_MANIFEST_NAME = "docs-workspace.json";
@@ -53,23 +54,50 @@ export async function loadWorkspaceManifest(manifestPath: string): Promise<DocsW
     if (!entry.id || !entry.title || !entry.source) {
       throw new Error("Each collection requires id, title, and source");
     }
-    const sourcePath = resolveSourcePath(manifestPath, entry.source);
-    const kind = inferCollectionKind(entry);
-    if (kind === "chm" && !existsSync(sourcePath)) {
-      throw new Error(`Collection ${entry.id}: CHM not found at ${sourcePath}`);
-    }
-    if (kind === "project" && !isMarkdownProjectDir(sourcePath)) {
-      throw new Error(`Collection ${entry.id}: MarkdownProject not found at ${sourcePath}`);
-    }
+    await validateCollectionSource(entry, manifestPath);
   }
   return manifest;
 }
 
-function inferCollectionKind(entry: DocCollectionEntry): DocCollectionKind {
+function inferCollectionKind(entry: DocCollectionEntry, manifestPath: string): DocCollectionKind {
   if (entry.kind) {
     return entry.kind;
   }
-  return entry.source.toLowerCase().endsWith(".chm") ? "chm" : "project";
+  if (entry.source.toLowerCase().endsWith(".chm")) {
+    return "chm";
+  }
+  const sourcePath = resolveSourcePath(manifestPath, entry.source);
+  if (isMarkdownProjectDir(sourcePath)) {
+    return "project";
+  }
+  return "markdown";
+}
+
+async function validateCollectionSource(
+  entry: DocCollectionEntry,
+  manifestPath: string,
+): Promise<void> {
+  const sourcePath = resolveSourcePath(manifestPath, entry.source);
+  const kind = inferCollectionKind(entry, manifestPath);
+
+  if (kind === "chm") {
+    if (!existsSync(sourcePath)) {
+      throw new Error(`Collection ${entry.id}: CHM not found at ${sourcePath}`);
+    }
+    return;
+  }
+
+  if (!existsSync(sourcePath)) {
+    throw new Error(`Collection ${entry.id}: source not found at ${sourcePath}`);
+  }
+
+  if (kind === "project" && !isMarkdownProjectDir(sourcePath)) {
+    throw new Error(`Collection ${entry.id}: MarkdownProject not found at ${sourcePath}`);
+  }
+
+  if (kind === "markdown" && !(await isMarkdownDocsDir(sourcePath))) {
+    throw new Error(`Collection ${entry.id}: markdown folder has no .md files at ${sourcePath}`);
+  }
 }
 
 function resolveSourcePath(manifestPath: string, source: string): string {
@@ -158,7 +186,7 @@ export async function convertWorkspace(
 
   const updatedCollections: DocCollectionEntry[] = [];
   for (const entry of manifest.collections) {
-    const kind = inferCollectionKind(entry);
+    const kind = inferCollectionKind(entry, manifestPath);
     if (kind === "chm") {
       const sourcePath = resolveSourcePath(manifestPath, entry.source);
       const outputDir = join(stagingDir, entry.id);
@@ -170,7 +198,7 @@ export async function convertWorkspace(
       });
       continue;
     }
-    updatedCollections.push({ ...entry, kind: "project" });
+    updatedCollections.push({ ...entry, kind });
   }
 
   return {
@@ -188,9 +216,10 @@ export async function resolveWorkspace(options: ResolveWorkspaceOptions): Promis
     options.stagingDir ?? join(dirname(options.manifestPath), ".chm-md-staging");
 
   for (const entry of manifest.collections) {
-    const kind = inferCollectionKind(entry);
+    const kind = inferCollectionKind(entry, options.manifestPath);
     const prefix = entry.routePrefix ?? entry.id;
     let projectDir: string;
+    let loaded: MarkdownProject;
 
     if (kind === "chm") {
       const sourcePath = resolveSourcePath(options.manifestPath, entry.source);
@@ -209,11 +238,18 @@ export async function resolveWorkspace(options: ResolveWorkspaceOptions): Promis
           sourcePath,
         });
       }
+      loaded = await loadProject(projectDir);
+    } else if (kind === "markdown") {
+      projectDir = resolveSourcePath(options.manifestPath, entry.source);
+      loaded = await loadMarkdownCollection({
+        sourceDir: projectDir,
+        title: entry.title,
+      });
     } else {
       projectDir = resolveSourcePath(options.manifestPath, entry.source);
+      loaded = await loadProject(projectDir);
     }
 
-    const loaded = await loadProject(projectDir);
     const prefixed = prefixProject(loaded, prefix);
     warnings.push(...loaded.warnings);
 

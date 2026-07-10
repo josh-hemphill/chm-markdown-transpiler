@@ -20,6 +20,12 @@ Create `docs-workspace.json` next to your sources (or pass the file path directl
       "id": "legacy-api",
       "title": "Legacy API",
       "source": "./out/legacy-project"
+    },
+    {
+      "id": "manual-guides",
+      "title": "Manual Guides",
+      "source": "./manual-docs",
+      "kind": "markdown"
     }
   ]
 }
@@ -29,9 +35,23 @@ Create `docs-workspace.json` next to your sources (or pass the file path directl
 |---|---|
 | `id` | URL-safe slug; default route prefix |
 | `title` | Collection label in nav and landing pages |
-| `source` | Path to `.chm` file or `MarkdownProject` directory (relative to manifest) |
-| `kind` | Optional `chm` or `project`; inferred from extension when omitted |
+| `source` | Path to `.chm`, `MarkdownProject` directory, or plain markdown folder |
+| `kind` | Optional `chm`, `project`, or `markdown`; inferred when omitted |
 | `routePrefix` | Optional URL prefix; defaults to `id` |
+
+### Collection kinds
+
+| Kind | Source | Behavior |
+|---|---|---|
+| `chm` | `.chm` file | Converted on demand during emit (or via `convert-workspace`) |
+| `project` | Directory with `manifest.json` | Loaded as an existing MarkdownProject |
+| `markdown` | Plain folder of `.md` files | Resolved on the fly; nav is built from the directory tree |
+
+Kind inference when `kind` is omitted:
+
+1. `.chm` extension → `chm`
+2. Directory containing `manifest.json` → `project`
+3. Directory containing `.md` files → `markdown`
 
 ## CLI
 

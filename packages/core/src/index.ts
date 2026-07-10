@@ -19,6 +19,8 @@ export type {
 } from "./convert-cache.js";
 export { loadProject } from "./load-project.js";
 export type { LoadedProject } from "./load-project.js";
+export { isMarkdownDocsDir, loadMarkdownCollection } from "./load-markdown-collection.js";
+export type { LoadMarkdownCollectionOptions } from "./load-markdown-collection.js";
 export {
   convertWorkspace,
   isMarkdownProjectDir,

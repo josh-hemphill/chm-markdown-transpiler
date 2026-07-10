@@ -151,4 +151,35 @@ describe("emit vitepress config", () => {
     );
     expect(alphaPage).toContain("# Intro");
   });
+
+  it("emits a workspace with a markdown collection", async () => {
+    const root = await mkdtemp(join(tmpdir(), "chm-md-emit-markdown-"));
+    const manualDir = join(root, "manual");
+    await mkdir(manualDir, { recursive: true });
+    await writeFile(join(manualDir, "page.md"), "# Manual Page\n", "utf8");
+
+    const manifestPath = join(root, "docs-workspace.json");
+    await writeFile(
+      manifestPath,
+      JSON.stringify({
+        title: "Workspace",
+        collections: [{ id: "manual", title: "Manual", source: "./manual", kind: "markdown" }],
+      }),
+      "utf8",
+    );
+
+    const resolved = await resolveWorkspace({ manifestPath, lint: false });
+    const outputDir = join(root, "site");
+    await emitVitePressWorkspace({ workspace: resolved, outputDir });
+
+    const config = await import("node:fs/promises").then((fs) =>
+      fs.readFile(join(outputDir, "docs", ".vitepress", "config.ts"), "utf8"),
+    );
+    expect(config).toContain('"/manual/"');
+
+    const page = await import("node:fs/promises").then((fs) =>
+      fs.readFile(join(outputDir, "docs", "manual", "page.md"), "utf8"),
+    );
+    expect(page).toContain("# Manual Page");
+  });
 });

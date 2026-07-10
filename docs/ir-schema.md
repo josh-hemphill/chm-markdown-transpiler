@@ -22,7 +22,7 @@ interface DocCollectionEntry {
   id: string;
   title: string;
   source: string;
-  kind?: "chm" | "project";
+  kind?: "chm" | "project" | "markdown";
   routePrefix?: string;
 }
 

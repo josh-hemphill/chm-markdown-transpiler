@@ -13,6 +13,7 @@ import {
   mapSitemapToIndex,
   mapSitemapToToc,
   maxSitemapDepth,
+  parseIndexSitemap,
   parseSitemap,
 } from "./sitemap.js";
 
@@ -97,7 +98,7 @@ function resolveIndex(
   preferBinary: boolean,
   extractWarnings: ConversionWarning[],
 ): { index: ChmIndexNode[]; indexSource: IndexSource; warnings: ConversionWarning[] } {
-  const textIndex = indexHtml ? mapSitemapToIndex(parseSitemap(indexHtml)) : [];
+  const textIndex = indexHtml ? mapSitemapToIndex(parseIndexSitemap(indexHtml)) : [];
   const binaryResult = parseBinaryIndex(files);
 
   if (preferBinary && binaryResult.index.length > 0) {

@@ -23,8 +23,10 @@ During HTML preprocessing, each `<table>` is classified:
 
 Precedence:
 
-1. Text sitemap (`.hhc` / `.hhk`) when present — uses sibling-`<UL>` nesting parser
+1. Text sitemap (`.hhc` / `.hhk`) when present — sibling-`<UL>` nesting parser with support for unclosed `<li>` tags and multi-keyword HHK objects
 2. Binary meta fallback when text is missing or `preferBinaryToc` / `preferBinaryIndex` is set
+
+Some older HHC compilers (for example Agilent/Keysight SCPI help) omit `</li>` closers and pack multiple `Name`/`Local` params into one HHK `<object>`. Those variants are handled by the text parser. CHMs that only ship full-text search (`/$FIftiMain`) without `.hhk` or `/$WWKeywordLinks` still report `indexSource: "none"`.
 
 ## Meta paths (not exported)
 

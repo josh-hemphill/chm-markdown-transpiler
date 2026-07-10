@@ -192,7 +192,7 @@ export interface EmitRunSummary {
   collectionCount?: number;
 }
 
-export type DocCollectionKind = "chm" | "project";
+export type DocCollectionKind = "chm" | "project" | "markdown";
 
 export interface DocCollectionEntry {
   id: string;

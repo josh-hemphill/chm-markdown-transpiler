@@ -7,6 +7,8 @@ export interface SitemapNode {
   children: SitemapNode[];
 }
 
+const TAG_TOKEN_RE = /<\/?[a-z][a-z0-9]*\b[^>]*>/gi;
+
 /** Parse CHM .hhc / .hhk sitemap HTML with sibling-UL nesting. */
 export function parseSitemap(html: string): SitemapNode[] {
   const bodyMatch = /<body[^>]*>([\s\S]*?)<\/body>/i.exec(html);
@@ -16,6 +18,17 @@ export function parseSitemap(html: string): SitemapNode[] {
     return [];
   }
   return parseUlChildren(rootUl.inner);
+}
+
+/** Parse HHK keyword index HTML, including multi-keyword objects. */
+export function parseIndexSitemap(html: string): SitemapNode[] {
+  const bodyMatch = /<body[^>]*>([\s\S]*?)<\/body>/i.exec(html);
+  const content = bodyMatch?.[1] ?? html;
+  const rootUl = findFirstUl(content);
+  if (!rootUl) {
+    return [];
+  }
+  return parseIndexUlChildren(rootUl.inner);
 }
 
 function findFirstUl(html: string): { inner: string; end: number } | null {
@@ -67,6 +80,57 @@ function extractBalancedTagContent(
   return null;
 }
 
+function getTagName(token: string): { name: string; isClose: boolean } {
+  const match = /^<\s*(\/?)\s*([a-z][a-z0-9]*)/i.exec(token);
+  return {
+    isClose: match?.[1] === "/",
+    name: match?.[2]?.toLowerCase() ?? "",
+  };
+}
+
+/** Split direct child <li> segments, ignoring nested <ul> content. */
+function splitDirectLiSegments(ulInner: string): string[] {
+  const segments: string[] = [];
+  let ulDepth = 0;
+  let liStart = -1;
+  let index = 0;
+
+  while (index < ulInner.length) {
+    TAG_TOKEN_RE.lastIndex = index;
+    const tokenMatch = TAG_TOKEN_RE.exec(ulInner);
+    if (!tokenMatch || tokenMatch.index === undefined) {
+      break;
+    }
+
+    const { name: tagName, isClose } = getTagName(tokenMatch[0]);
+
+    if (tagName === "ul") {
+      if (isClose) {
+        ulDepth -= 1;
+      } else {
+        ulDepth += 1;
+      }
+      index = tokenMatch.index + tokenMatch[0].length;
+      continue;
+    }
+
+    if (tagName === "li" && !isClose && ulDepth === 0) {
+      if (liStart >= 0) {
+        segments.push(ulInner.slice(liStart, tokenMatch.index));
+      }
+      liStart = tokenMatch.index + tokenMatch[0].length;
+    }
+
+    index = tokenMatch.index + tokenMatch[0].length;
+  }
+
+  if (liStart >= 0) {
+    segments.push(ulInner.slice(liStart));
+  }
+
+  return segments;
+}
+
 function parseUlChildren(ulInner: string): SitemapNode[] {
   const nodes: SitemapNode[] = [];
   let pos = 0;
@@ -81,10 +145,10 @@ function parseUlChildren(ulInner: string): SitemapNode[] {
     const liStart = pos + liOpen.index + liOpen[0].length;
     const liContent = extractBalancedTagContent(ulInner, liStart, "li");
     if (!liContent) {
-      break;
+      return parseUnclosedLiUlChildren(ulInner);
     }
 
-    const entry = parseListItem(liContent.content);
+    const entry = parseTocListItemSegment(liContent.content);
     pos = liContent.end;
 
     const afterLi = ulInner.slice(pos);
@@ -94,10 +158,59 @@ function parseUlChildren(ulInner: string): SitemapNode[] {
       pos += siblingUl.end;
     }
 
-    nodes.push(entry);
+    if (entry.name || entry.local) {
+      nodes.push(entry);
+    }
   }
 
   return nodes;
+}
+
+function parseUnclosedLiUlChildren(ulInner: string): SitemapNode[] {
+  const nodes: SitemapNode[] = [];
+
+  for (const segment of splitDirectLiSegments(ulInner)) {
+    const entry = parseTocListItemSegment(segment);
+    if (entry.name || entry.local) {
+      nodes.push(entry);
+    }
+  }
+
+  return nodes;
+}
+
+function parseIndexUlChildren(ulInner: string): SitemapNode[] {
+  const nodes: SitemapNode[] = [];
+
+  for (const segment of splitDirectLiSegments(ulInner)) {
+    const ulMatch = /<ul\b/i.exec(segment);
+    const beforeUl = ulMatch ? segment.slice(0, ulMatch.index) : segment;
+    nodes.push(...parseIndexObjectParams(beforeUl));
+
+    if (ulMatch) {
+      const nested = findFirstUl(segment.slice(ulMatch.index));
+      if (nested) {
+        nodes.push(...parseIndexUlChildren(nested.inner));
+      }
+    }
+  }
+
+  return nodes;
+}
+
+function parseTocListItemSegment(segment: string): SitemapNode {
+  const ulMatch = /<ul\b/i.exec(segment);
+  const beforeUl = ulMatch ? segment.slice(0, ulMatch.index) : segment;
+  const entry = parseListItem(beforeUl);
+
+  if (ulMatch) {
+    const nested = findFirstUl(segment.slice(ulMatch.index));
+    if (nested) {
+      entry.children = parseUlChildren(nested.inner);
+    }
+  }
+
+  return entry;
 }
 
 function parseListItem(liInner: string): SitemapNode {
@@ -117,6 +230,65 @@ function parseListItem(liInner: string): SitemapNode {
     node.local = normalizeChmPath(local.startsWith("/") ? local : `/${local}`);
   }
   return node;
+}
+
+function parseIndexObjectParams(liInner: string): SitemapNode[] {
+  const objectMatch =
+    /<object\b[^>]*type\s*=\s*["']text\/sitemap["'][^>]*>([\s\S]*?)<\/object>/i.exec(liInner);
+  if (!objectMatch?.[1]) {
+    return [];
+  }
+
+  const entries: SitemapNode[] = [];
+  const pendingNames: string[] = [];
+
+  for (const param of extractAllParams(objectMatch[1])) {
+    const key = param.name.toLowerCase();
+    if (key === "name") {
+      pendingNames.push(param.value);
+      continue;
+    }
+    if (key !== "local") {
+      continue;
+    }
+
+    while (pendingNames.length > 1) {
+      entries.push({ name: pendingNames.shift()!, children: [] });
+    }
+
+    const local = normalizeChmPath(param.value.startsWith("/") ? param.value : `/${param.value}`);
+    const name = pendingNames.pop() ?? "";
+    entries.push({ name, local, children: [] });
+  }
+
+  for (const name of pendingNames) {
+    entries.push({ name, children: [] });
+  }
+
+  return entries;
+}
+
+function extractAllParams(objectBody: string): Array<{ name: string; value: string }> {
+  const params: Array<{ name: string; value: string }> = [];
+  const paramRe = /<param\b[^>]*>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = paramRe.exec(objectBody)) !== null) {
+    const tag = match[0];
+    const name = readAttribute(tag, "name");
+    const value = readAttribute(tag, "value");
+    if (!name || value === undefined) {
+      continue;
+    }
+    params.push({ name, value: decodeEntities(value.trim()) });
+  }
+
+  return params;
+}
+
+function readAttribute(tag: string, attribute: string): string | undefined {
+  const re = new RegExp(`${attribute}\\s*=\\s*["']([^"']*)["']`, "i");
+  return re.exec(tag)?.[1];
 }
 
 function extractParam(objectBody: string, paramName: string): string | undefined {
