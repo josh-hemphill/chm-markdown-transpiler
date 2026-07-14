@@ -1,5 +1,19 @@
 # @chm-md/cli
 
+## 0.3.0
+
+### Minor Changes
+
+- feat: enhance table processing and code snippet handling
+
+### Patch Changes
+
+- Updated dependencies
+  - @chm-md/core@0.3.0
+  - @chm-md/emit-vitepress@0.3.0
+  - @chm-md/extract@0.3.0
+  - @chm-md/shared@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 {
   "name": "@chm-md/cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "CLI for converting CHM help to Markdown and VitePress sites",
   "type": "module",
   "license": "LGPL-2.1-only",
