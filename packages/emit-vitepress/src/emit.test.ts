@@ -104,6 +104,21 @@ describe("emit vitepress config", () => {
     );
     expect(config).toContain('provider: "local"');
     expect(config).toContain("detailedView: true");
+
+    const themeIndex = await import("node:fs/promises").then((fs) =>
+      fs.readFile(join(outputDir, "docs", ".vitepress", "theme", "index.ts"), "utf8"),
+    );
+    expect(themeIndex).toContain("DefaultTheme");
+
+    const customCss = await import("node:fs/promises").then((fs) =>
+      fs.readFile(join(outputDir, "docs", ".vitepress", "theme", "custom.css"), "utf8"),
+    );
+    expect(customCss).toContain(".VPNavBarTitle .title");
+
+    const pnpmWorkspace = await import("node:fs/promises").then((fs) =>
+      fs.readFile(join(outputDir, "pnpm-workspace.yaml"), "utf8"),
+    );
+    expect(pnpmWorkspace).toContain("esbuild: true");
   });
 
   it("writes multi-sidebar keys for workspace emit", async () => {

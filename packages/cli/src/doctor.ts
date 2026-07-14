@@ -50,11 +50,12 @@ export interface DoctorFormatOptions {
 
 const TABLE_WARNING_CODES = [
   "layout-table-stripped",
-  "layout-table-preserved",
+  "layout-table-flattened",
   "layout-table",
+  "table-span-flattened",
+  "table-nested-flattened",
   "complex-table",
   "note-table",
-  "table-html-fallback",
 ];
 
 const DEFAULT_WARNING_LIMIT = 20;

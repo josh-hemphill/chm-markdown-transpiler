@@ -8,6 +8,17 @@ const LANGUAGE_CLASS_MAP: Record<string, { label: string; fence: string }> = {
   jscriptcode: { label: "JScript", fence: "javascript" },
 };
 
+const MONOSPACE_FACE_PATTERN = /courier|consolas|monaco|lucida\s*console/i;
+const MONOSPACE_CLASS_PATTERN = /\b(?:libCScode|Code|code)\b/i;
+const MONOSPACE_STYLE_PATTERN = /font-family\s*:\s*[^;]*monospace/i;
+
+/** Preprocess MSDN snippets and other monospace/code-like HTML into code elements. */
+export function preprocessCodeBlocks(document: Document): void {
+  preprocessCodeSnippets(document);
+  preprocessStandalonePreElements(document);
+  preprocessMonospaceElements(document);
+}
+
 /** Convert MSDN CodeSnippetContainer tabs into labeled fenced code blocks. */
 export function preprocessCodeSnippets(document: Document): void {
   for (const container of [...document.querySelectorAll(".CodeSnippetContainer")]) {
@@ -41,6 +52,84 @@ export function preprocessCodeSnippets(document: Document): void {
     wrapper.innerHTML = blocks.join("\n");
     container.replaceWith(wrapper);
   }
+}
+
+function preprocessStandalonePreElements(document: Document): void {
+  for (const pre of [...document.querySelectorAll("pre")]) {
+    if (pre.closest(".CodeSnippetContainer, [data-chm-code-snippets]")) {
+      continue;
+    }
+
+    if (pre.querySelector("code")) {
+      continue;
+    }
+
+    const codeText = htmlToPlainCode(pre.innerHTML).trim();
+    if (!codeText) {
+      continue;
+    }
+
+    const code = document.createElement("code");
+    code.textContent = codeText;
+    pre.replaceChildren(code);
+  }
+}
+
+function preprocessMonospaceElements(document: Document): void {
+  const candidates = [
+    ...document.querySelectorAll("font[face]"),
+    ...document.querySelectorAll("span[style], span[class]"),
+    ...document.querySelectorAll("p[style], p[class]"),
+    ...document.querySelectorAll("div[style], div[class]"),
+  ];
+
+  for (const element of candidates) {
+    if (element.closest("pre, code, .CodeSnippetContainer, [data-chm-code-snippets]")) {
+      continue;
+    }
+
+    if (!isMonospaceElement(element)) {
+      continue;
+    }
+
+    const codeText = htmlToPlainCode(element.innerHTML).trim();
+    if (!codeText) {
+      continue;
+    }
+
+    replaceWithCodeElement(document, element, codeText);
+  }
+}
+
+function isMonospaceElement(element: Element): boolean {
+  const face = element.getAttribute("face") ?? "";
+  if (MONOSPACE_FACE_PATTERN.test(face)) {
+    return true;
+  }
+
+  const className = element.getAttribute("class") ?? "";
+  if (MONOSPACE_CLASS_PATTERN.test(className)) {
+    return true;
+  }
+
+  const style = element.getAttribute("style") ?? "";
+  return MONOSPACE_STYLE_PATTERN.test(style);
+}
+
+function replaceWithCodeElement(document: Document, element: Element, codeText: string): void {
+  const useBlock = codeText.includes("\n") || codeText.includes("\t") || codeText.length > 80;
+  if (useBlock) {
+    const pre = document.createElement("pre");
+    const code = document.createElement("code");
+    code.textContent = codeText;
+    pre.appendChild(code);
+    element.replaceWith(pre);
+    return;
+  }
+
+  const code = document.createElement("code");
+  code.textContent = codeText;
+  element.replaceWith(code);
 }
 
 /** Replace javascript: anchors with plain text labels. */

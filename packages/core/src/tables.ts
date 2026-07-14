@@ -9,7 +9,7 @@ export type TableKind =
 
 export type TableChromeMode = "strip" | "preserve" | "flatten";
 
-export type TableWarningAction = "stripped" | "preserved-html" | "blockquote" | "gfm";
+export type TableWarningAction = "stripped" | "blockquote" | "gfm";
 
 const CHROME_CLASS_PATTERNS = [
   /headerbar/i,
@@ -30,13 +30,18 @@ export interface TableProcessResult {
   replacementHtml?: string;
 }
 
+interface GridCell {
+  tag: "th" | "td";
+  text: string;
+}
+
 /** Classify an HTML table for conversion strategy. */
 export function classifyTable(table: Element): TableKind {
   if (table.querySelector("table")) {
     return "nested";
   }
 
-  const rows = [...table.querySelectorAll("tr")];
+  const rows = tableRows(table);
   if (rows.length === 0) {
     return "layout-chrome";
   }
@@ -65,6 +70,10 @@ export function classifyTable(table: Element): TableKind {
   }
 
   return "simple-data";
+}
+
+function tableRows(table: Element): Element[] {
+  return [...table.querySelectorAll("tr")].filter((row) => row.closest("table") === table);
 }
 
 function isChromeTable(table: Element): boolean {
@@ -170,8 +179,119 @@ function isChromeOnlyContent(table: Element): boolean {
   return isChromeTable(table) && !table.querySelector("th");
 }
 
-function preserveAsHtmlBlock(table: Element): string {
-  return `<div data-chm-html-block="table">${table.outerHTML}</div>`;
+function cellPlainText(cell: Element): string {
+  return cell.textContent?.trim() ?? "";
+}
+
+/** Expand colspan/rowspan into a rectangular grid of plain cell values. */
+function expandTableToGrid(table: Element): GridCell[][] {
+  const rows = tableRows(table);
+  const grid: (GridCell | null)[][] = [];
+
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+    const row = rows[rowIndex]!;
+    if (!grid[rowIndex]) {
+      grid[rowIndex] = [];
+    }
+
+    let columnIndex = 0;
+    for (const cell of [...row.querySelectorAll(":scope > th, :scope > td")]) {
+      while (grid[rowIndex]![columnIndex]) {
+        columnIndex += 1;
+      }
+
+      const colspan = Math.max(1, Number.parseInt(cell.getAttribute("colspan") ?? "1", 10) || 1);
+      const rowspan = Math.max(1, Number.parseInt(cell.getAttribute("rowspan") ?? "1", 10) || 1);
+      const tag = cell.tagName.toLowerCase() === "th" ? "th" : "td";
+      const gridCell: GridCell = { tag, text: cellPlainText(cell) };
+
+      for (let rowOffset = 0; rowOffset < rowspan; rowOffset += 1) {
+        for (let columnOffset = 0; columnOffset < colspan; columnOffset += 1) {
+          const targetRow = rowIndex + rowOffset;
+          const targetColumn = columnIndex + columnOffset;
+          while (grid.length <= targetRow) {
+            grid.push([]);
+          }
+          while (grid[targetRow]!.length <= targetColumn) {
+            grid[targetRow]!.push(null);
+          }
+          grid[targetRow]![targetColumn] = gridCell;
+        }
+      }
+
+      columnIndex += colspan;
+    }
+  }
+
+  return grid.map((row) =>
+    row.map((cell) => cell ?? { tag: "td" as const, text: "" }),
+  );
+}
+
+function buildSimpleTableHtml(grid: GridCell[][]): string {
+  if (grid.length === 0) {
+    return "";
+  }
+
+  const rows = grid.map((row) => {
+    const cells = row.map((cell) => `<${cell.tag}>${escapeHtml(cell.text)}</${cell.tag}>`);
+    return `<tr>${cells.join("")}</tr>`;
+  });
+  return `<table>${rows.join("")}</table>`;
+}
+
+function nestedDepth(table: Element): number {
+  return [...table.querySelectorAll("table")].filter((candidate) => candidate !== table).length;
+}
+
+/** Flatten spanned/nested tables into one or more plain HTML tables for GFM conversion. */
+function flattenTableForGfm(table: Element): string {
+  const parts: string[] = [];
+  const nestedTables = [...table.querySelectorAll("table")].filter((candidate) => candidate !== table);
+  nestedTables.sort((left, right) => nestedDepth(right) - nestedDepth(left));
+
+  for (const inner of nestedTables) {
+    if (!table.contains(inner)) {
+      continue;
+    }
+
+    const innerHtml = buildSimpleTableHtml(expandTableToGrid(inner));
+    if (innerHtml) {
+      parts.push(innerHtml);
+    }
+
+    const placeholder = table.ownerDocument!.createElement("span");
+    placeholder.textContent = inner.textContent?.trim() ?? "";
+    inner.replaceWith(placeholder);
+  }
+
+  const outerHtml = buildSimpleTableHtml(expandTableToGrid(table));
+  if (outerHtml) {
+    parts.unshift(outerHtml);
+  }
+
+  return parts.join("");
+}
+
+function gfmFlattenResult(
+  table: Element,
+  kind: TableKind,
+  sourcePath: string | undefined,
+  warningCode: string,
+  warningMessage: string,
+  reason: string,
+): TableProcessResult {
+  const replacementHtml = flattenTableForGfm(table);
+  return {
+    kind,
+    replacementHtml,
+    warning: {
+      code: warningCode,
+      message: warningMessage,
+      sourcePath,
+      details: buildTableWarningDetails(table, kind, "gfm", reason),
+    },
+  };
 }
 
 /** Process a table element and decide how to represent it in markdown. */
@@ -202,19 +322,6 @@ export function processTable(
   }
 
   if (kind === "layout-chrome") {
-    if (chromeMode === "preserve") {
-      return {
-        kind,
-        replacementHtml: preserveAsHtmlBlock(table),
-        warning: {
-          code: "layout-table-preserved",
-          message: "Layout/chrome table preserved as HTML block",
-          sourcePath,
-          details: buildTableWarningDetails(table, kind, "preserved-html", reason),
-        },
-      };
-    }
-
     if (chromeMode === "flatten") {
       const flattened = extractFlattenedText(table);
       return {
@@ -234,7 +341,7 @@ export function processTable(
       };
     }
 
-    if (isChromeOnlyContent(table)) {
+    if (isChromeOnlyContent(table) && chromeMode === "strip") {
       return {
         kind,
         replacementHtml: "",
@@ -246,32 +353,47 @@ export function processTable(
         },
       };
     }
+
+    return gfmFlattenResult(
+      table,
+      kind,
+      sourcePath,
+      chromeMode === "preserve" ? "layout-table-flattened" : "layout-table-flattened",
+      "Layout/chrome table flattened to GFM table",
+      reason,
+    );
   }
 
-  const warningCode =
-    kind === "spanned"
-      ? "table-html-fallback"
-      : kind === "nested"
-        ? "complex-table"
-        : "layout-table-preserved";
-
-  const warningMessage =
-    kind === "spanned"
-      ? "Table with colspan/rowspan preserved as HTML block"
-      : kind === "nested"
-        ? "Nested table preserved as HTML block"
-        : "Layout table preserved as HTML block";
-
-  return {
-    kind,
-    replacementHtml: preserveAsHtmlBlock(table),
-    warning: {
-      code: warningCode,
-      message: warningMessage,
+  if (kind === "spanned") {
+    return gfmFlattenResult(
+      table,
+      kind,
       sourcePath,
-      details: buildTableWarningDetails(table, kind, "preserved-html", reason),
-    },
-  };
+      "table-span-flattened",
+      "Table with colspan/rowspan flattened to GFM table",
+      reason,
+    );
+  }
+
+  if (kind === "nested") {
+    return gfmFlattenResult(
+      table,
+      kind,
+      sourcePath,
+      "table-nested-flattened",
+      "Nested table flattened to sequential GFM tables",
+      reason,
+    );
+  }
+
+  return gfmFlattenResult(
+    table,
+    kind,
+    sourcePath,
+    "layout-table-flattened",
+    "Table flattened to GFM table",
+    reason,
+  );
 }
 
 /** Collapse identical layout-table-stripped warnings into summary entries. */
@@ -319,6 +441,23 @@ export function collapseChromeStripWarnings(warnings: ConversionWarning[]): Conv
   return collapsed;
 }
 
+function replaceTableNode(table: Element, replacementHtml: string): void {
+  const wrapper = table.ownerDocument!.createElement("div");
+  wrapper.innerHTML = replacementHtml;
+
+  if (wrapper.childElementCount <= 1) {
+    const replacement = wrapper.firstElementChild ?? wrapper;
+    table.replaceWith(replacement);
+    return;
+  }
+
+  const fragment = table.ownerDocument!.createDocumentFragment();
+  while (wrapper.firstChild) {
+    fragment.appendChild(wrapper.firstChild);
+  }
+  table.replaceWith(fragment);
+}
+
 /** Apply table preprocessing to all tables in a document. */
 export function preprocessTables(
   document: Document,
@@ -327,6 +466,10 @@ export function preprocessTables(
   chromeMode: TableChromeMode = "strip",
 ): void {
   for (const table of document.querySelectorAll("table")) {
+    if (table.closest("table") !== table) {
+      continue;
+    }
+
     const result = processTable(table, sourcePath, chromeMode);
     if (result.warning) {
       warnings.push(result.warning);
@@ -341,10 +484,7 @@ export function preprocessTables(
       continue;
     }
 
-    const wrapper = document.createElement("div");
-    wrapper.innerHTML = result.replacementHtml;
-    const replacement = wrapper.firstElementChild ?? wrapper;
-    table.replaceWith(replacement);
+    replaceTableNode(table, result.replacementHtml);
   }
 }
 

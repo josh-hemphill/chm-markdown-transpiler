@@ -5,18 +5,12 @@ import TurndownService from "turndown";
 import { gfm } from "@joplin/turndown-plugin-gfm";
 import { classifyTable, collapseChromeStripWarnings, preprocessTables, processTable } from "./tables.js";
 
-function turndownHtml(html: string): string {
+function turndownHtml(html: string, chromeMode: "strip" | "preserve" | "flatten" = "strip"): string {
   const { document } = parseHTML(`<!DOCTYPE html><html><body>${html}</body></html>`);
   const warnings: { code: string }[] = [];
-  preprocessTables(document, "/test.html", warnings as never);
+  preprocessTables(document, "/test.html", warnings as never, chromeMode);
   const service = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" });
   service.use(gfm);
-  service.addRule("chmHtmlBlock", {
-    filter: (node) =>
-      node.nodeName === "DIV" &&
-      (node as Element).getAttribute("data-chm-html-block") === "table",
-    replacement: (_content, node) => `\n\n${(node as Element).innerHTML}\n\n`,
-  });
   const bodyHtml = document.body?.innerHTML ?? html;
   const markdown = turndown(service, bodyHtml);
   return `${markdown}\n${JSON.stringify(warnings.map((w) => w.code))}`;
@@ -77,14 +71,15 @@ describe("processTable", () => {
     expect(result.replacementHtml).toContain("Note: check dependencies");
   });
 
-  it("preserves spanned tables as HTML", () => {
+  it("flattens spanned tables to simple HTML for GFM", () => {
     const { document } = parseHTML(
       "<table><tr><td rowspan='2'>A</td><td>B</td></tr><tr><td>C</td></tr></table>",
     );
     const result = processTable(document.querySelector("table")!);
     expect(result.kind).toBe("spanned");
-    expect(result.warning?.code).toBe("table-html-fallback");
-    expect(result.replacementHtml).toContain("<table");
+    expect(result.warning?.code).toBe("table-span-flattened");
+    expect(result.replacementHtml).toContain("<table>");
+    expect(result.replacementHtml).not.toContain("rowspan");
   });
 });
 
@@ -108,14 +103,15 @@ describe("preprocessTables integration", () => {
     expect(output).toContain("layout-table-stripped");
   });
 
-  it("preserves chrome tables when mode is preserve", () => {
-    const { document } = parseHTML(
-      '<!DOCTYPE html><html><body><table class="headerBar"><tr><td>Nav</td></tr></table></body></html>',
+  it("flattens chrome tables to GFM when mode is preserve", () => {
+    const output = turndownHtml(
+      '<table class="headerBar"><tr><td>Nav</td><td>Tools</td></tr></table>',
+      "preserve",
     );
-    const warnings: { code: string }[] = [];
-    preprocessTables(document, "/test.html", warnings as never, "preserve");
-    expect(warnings[0]?.code).toBe("layout-table-preserved");
-    expect(document.body?.innerHTML).toContain("<table");
+    expect(output).toContain("layout-table-flattened");
+    expect(output).toContain("| Nav | Tools |");
+    expect(output).not.toContain("<table");
+    expect(output).not.toContain("bgcolor");
   });
 
   it("flattens chrome tables when mode is flatten", () => {
@@ -148,12 +144,24 @@ describe("preprocessTables integration", () => {
     expect(collapsed[0]?.details?.count).toBe(2);
   });
 
-  it("keeps spanned tables as HTML in markdown", () => {
+  it("flattens spanned tables to GFM pipes without presentation attrs", () => {
     const output = turndownHtml(
-      "<table><tr><td colspan='2'>Wide</td></tr></table>",
+      "<table bgcolor='#ff0000'><tr><td colspan='2' style='color:red'>Wide</td></tr></table>",
     );
-    expect(output).toContain("<table");
-    expect(output).toContain("table-html-fallback");
+    expect(output).toContain("| Wide | Wide |");
+    expect(output).toContain("table-span-flattened");
+    expect(output).not.toContain("<table");
+    expect(output).not.toContain("bgcolor");
+  });
+
+  it("flattens nested tables to sequential GFM tables", () => {
+    const output = turndownHtml(
+      "<table><tr><td><table><tr><td>inner</td></tr></table></td><td>outer</td></tr></table>",
+    );
+    expect(output).toContain("| inner |");
+    expect(output).toContain("| outer |");
+    expect(output).toContain("table-nested-flattened");
+    expect(output).not.toContain("<table");
   });
 
   it("escapes pipe characters in simple table cells", () => {

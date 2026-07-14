@@ -174,14 +174,15 @@ function escapeAngles(text: string): string {
     .replace(/&amp;gt;/g, "\\>");
 }
 
-type SegmentType = "prose" | "fenced-code" | "html-block";
+type SegmentType = "prose" | "fenced-code" | "inline-code" | "html-block";
 
-interface MarkdownSegment {
+export interface MarkdownSegment {
   type: SegmentType;
   content: string;
 }
 
-function splitMarkdownSegments(markdown: string): MarkdownSegment[] {
+/** Split markdown into prose, code, and preserved HTML regions. */
+export function splitMarkdownSegments(markdown: string): MarkdownSegment[] {
   const segments: MarkdownSegment[] = [];
   let index = 0;
 
@@ -200,6 +201,18 @@ function splitMarkdownSegments(markdown: string): MarkdownSegment[] {
       continue;
     }
 
+    if (markdown[index] === "`") {
+      const inlineEnd = findInlineCodeEnd(markdown, index);
+      if (inlineEnd !== -1) {
+        segments.push({
+          type: "inline-code",
+          content: markdown.slice(index, inlineEnd + 1),
+        });
+        index = inlineEnd + 1;
+        continue;
+      }
+    }
+
     const htmlStart = findHtmlBlockStart(markdown, index);
     if (htmlStart === index) {
       const htmlEnd = findHtmlBlockEnd(markdown, index);
@@ -213,9 +226,11 @@ function splitMarkdownSegments(markdown: string): MarkdownSegment[] {
 
     const nextFence = markdown.indexOf("```", index);
     const nextHtml = findHtmlBlockStart(markdown, index);
+    const nextInline = findNextInlineCodeStart(markdown, index);
     const nextSpecial = Math.min(
       nextFence === -1 ? Number.POSITIVE_INFINITY : nextFence,
       nextHtml === -1 ? Number.POSITIVE_INFINITY : nextHtml,
+      nextInline === -1 ? Number.POSITIVE_INFINITY : nextInline,
     );
     const proseEnd = nextSpecial === Number.POSITIVE_INFINITY ? markdown.length : nextSpecial;
     segments.push({ type: "prose", content: markdown.slice(index, proseEnd) });
@@ -223,6 +238,30 @@ function splitMarkdownSegments(markdown: string): MarkdownSegment[] {
   }
 
   return segments;
+}
+
+function findInlineCodeEnd(markdown: string, startIndex: number): number {
+  for (let index = startIndex + 1; index < markdown.length; index += 1) {
+    if (markdown[index] === "`" && !isEscaped(markdown, index)) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function findNextInlineCodeStart(markdown: string, fromIndex: number): number {
+  let search = fromIndex;
+  while (search < markdown.length) {
+    const index = markdown.indexOf("`", search);
+    if (index === -1) {
+      return -1;
+    }
+    if (!markdown.startsWith("```", index)) {
+      return index;
+    }
+    search = index + 3;
+  }
+  return -1;
 }
 
 function findHtmlBlockStart(markdown: string, fromIndex: number): number {

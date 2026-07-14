@@ -54,6 +54,8 @@ const syntheticFiles = new Map<string, Uint8Array>([
 <html>
 <head><title>Introduction</title><link rel="stylesheet" href="../styles/help.css"></head>
 <body>
+<!-- legacy init -->
+<script>window.__CHM = true;</script>
 <h1>Introduction</h1>
 <p>See <a href="details.html">details</a> and <img src="../images/logo.png" alt="logo"></p>
 <table><tr><th>Name</th><th>Value</th></tr><tr><td>Alpha</td><td>1</td></tr></table>
@@ -89,5 +91,8 @@ describe("convertBundle", () => {
     expect(intro?.body).toContain("/topics/details");
     expect(intro?.body).toContain("/assets/images/logo.png");
     expect(intro?.body).toContain("| Name | Value |");
+    expect(intro?.body).not.toContain("css:");
+    expect(intro?.body).not.toContain("<!-- legacy init -->");
+    expect(intro?.body).not.toContain("window.__CHM");
   });
 });

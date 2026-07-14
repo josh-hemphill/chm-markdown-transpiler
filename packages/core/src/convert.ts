@@ -17,7 +17,7 @@ import {
 import { decodeChmText } from "@chm-md/extract";
 import type { Configuration } from "markdownlint";
 import type { HeadingIdEntry, ProgressHandler } from "@chm-md/shared";
-import { neutralizeJavascriptLinks, preprocessCodeSnippets } from "./code-snippets.js";
+import { neutralizeJavascriptLinks, preprocessCodeBlocks } from "./code-snippets.js";
 import { escapeMarkdownProse } from "./escape-html.js";
 import { assignHeadingIds, postProcessMarkdown } from "./heading-ids.js";
 import { buildStyleProfile, defaultStyleProfile, lintMarkdown, resolveLintConfig } from "./lint.js";
@@ -54,13 +54,34 @@ function createTurndown(profile: ReturnType<typeof defaultStyleProfile>): Turndo
       return `\n\n${hashes} ${content}${suffix}\n\n`;
     },
   });
-  service.addRule("chmHtmlBlock", {
-    filter: (node) =>
-      node.nodeName === "DIV" &&
-      (node as Element).getAttribute("data-chm-html-block") === "table",
-    replacement: (_content, node) => `\n\n${(node as Element).innerHTML}\n\n`,
-  });
   return service;
+}
+
+function removeCommentsAndScripts(document: Document): void {
+  const comments: Comment[] = [];
+  walkDocumentNodes(document, (node) => {
+    if (node.nodeType === 8) {
+      comments.push(node as Comment);
+    }
+  });
+  for (const comment of comments) {
+    comment.remove();
+  }
+
+  for (const script of [...document.querySelectorAll("script")]) {
+    script.remove();
+  }
+}
+
+function walkDocumentNodes(root: Node, visitor: (node: Node) => void): void {
+  const stack: Node[] = [root];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    visitor(node);
+    for (const child of [...node.childNodes]) {
+      stack.push(child);
+    }
+  }
 }
 
 function extractLinkedStyles(document: Document): string[] {
@@ -213,12 +234,13 @@ function preprocessHtml(
   const { document } = parseHTML(html);
   const outboundLinks: PageLinkRef[] = [];
   const css = extractLinkedStyles(document);
+  removeCommentsAndScripts(document);
   const { assignments: headingIds, fragmentMap } = assignHeadingIds(document);
   topicFragmentMaps.set(topicPath, fragmentMap);
   const originalIds = extractOriginalIds(document);
   const title = extractTitle(document);
 
-  preprocessCodeSnippets(document);
+  preprocessCodeBlocks(document);
   neutralizeJavascriptLinks(document, topicPath, warnings);
 
   for (const anchor of document.querySelectorAll("a[href]")) {
@@ -276,9 +298,6 @@ function serializeFrontmatter(frontmatter: PageFrontmatter): string {
   lines.push(`chmTopic: ${JSON.stringify(frontmatter.chmTopic)}`);
   if (frontmatter.keywords?.length) {
     lines.push(`keywords: ${JSON.stringify(frontmatter.keywords)}`);
-  }
-  if (frontmatter.css?.length) {
-    lines.push(`css: ${JSON.stringify(frontmatter.css)}`);
   }
   if (frontmatter.originalIds?.length) {
     lines.push(`originalIds: ${JSON.stringify(frontmatter.originalIds)}`);
@@ -451,7 +470,6 @@ export function convertBundle(options: ConvertOptions): MarkdownProject {
       sourcePath: topicPath,
       chmTopic: topicPath,
       keywords: collectKeywordsForTopic(topicPath, options.bundle),
-      css: processed.css,
       originalIds: processed.originalIds,
       headingIds: processed.headingIds,
       outboundLinks: processed.outboundLinks,
@@ -542,10 +560,11 @@ export async function writeProject(options: WriteProjectOptions): Promise<void> 
         tableWarnings: countWarningsByPrefix(project.warnings, "table"),
         layoutWarnings: countWarningCodes(project.warnings, [
           "layout-table-stripped",
-          "layout-table-preserved",
+          "layout-table-flattened",
+          "table-span-flattened",
+          "table-nested-flattened",
           "complex-table",
           "note-table",
-          "table-html-fallback",
         ]),
       },
       null,

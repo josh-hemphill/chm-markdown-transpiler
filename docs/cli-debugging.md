@@ -82,11 +82,11 @@ Warning codes:
 
 | Code | Meaning |
 |---|---|
-| `layout-table-stripped` | Chrome/layout table removed or flattened |
-| `layout-table-preserved` | Layout table kept as HTML block |
+| `layout-table-stripped` | Chrome/layout table removed or flattened to paragraphs |
+| `layout-table-flattened` | Layout table flattened to GFM pipe table |
 | `note-table` | Single-row note converted to blockquote |
-| `complex-table` | Nested table preserved as HTML |
-| `table-html-fallback` | Spanned table preserved as HTML |
+| `table-span-flattened` | Spanned table flattened to GFM pipe table |
+| `table-nested-flattened` | Nested table flattened to sequential GFM tables |
 
 - `headingIds`
 - `outboundLinks`

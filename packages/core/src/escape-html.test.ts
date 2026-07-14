@@ -33,6 +33,13 @@ describe("escapeMarkdownProse", () => {
     expect(escapeMarkdownProse(input)).toBe(input);
   });
 
+  it("leaves inline code unchanged", () => {
+    expect(escapeMarkdownProse("Use `List<string>` here")).toBe("Use `List<string>` here");
+    expect(escapeMarkdownProse("Generic `Triple<TFirst, TSecond>` type")).toBe(
+      "Generic `Triple<TFirst, TSecond>` type",
+    );
+  });
+
   it("leaves html table blocks unchanged", () => {
     const input = "<table><tr><td>A<T> [x]</td></tr></table>";
     expect(escapeMarkdownProse(input)).toBe(input);

@@ -130,6 +130,37 @@ ${LOCAL_SEARCH_CONFIG}
 `;
 }
 
+function renderPnpmWorkspaceYaml(): string {
+  return "allowBuilds:\n  esbuild: true\n";
+}
+
+function renderThemeIndex(): string {
+  return `import DefaultTheme from 'vitepress/theme'
+import './custom.css'
+
+export default {
+  extends: DefaultTheme,
+}
+`;
+}
+
+function renderCustomCss(): string {
+  return `.VPNavBarTitle .title {
+  max-width: min(28rem, 40vw);
+  white-space: normal;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+`;
+}
+
+async function writeVitePressTheme(vitepressDir: string): Promise<void> {
+  const themeDir = join(vitepressDir, "theme");
+  await mkdir(themeDir, { recursive: true });
+  await writeFile(join(themeDir, "index.ts"), renderThemeIndex(), "utf8");
+  await writeFile(join(themeDir, "custom.css"), renderCustomCss(), "utf8");
+}
+
 function renderPackageJson(title: string): string {
   return JSON.stringify(
     {
@@ -283,7 +314,9 @@ export async function emitVitePress(options: EmitVitePressOptions): Promise<Emit
     renderPackageJson(project.siteMeta.title ?? "CHM Documentation"),
     "utf8",
   );
+  await writeFile(join(options.outputDir, "pnpm-workspace.yaml"), renderPnpmWorkspaceYaml(), "utf8");
   await writeFile(join(vitepressDir, "config.ts"), renderConfig(project), "utf8");
+  await writeVitePressTheme(vitepressDir);
   await writeFile(join(docsDir, "index.md"), renderIndexPage(project), "utf8");
   await writeProjectPages(docsDir, project);
 
@@ -345,7 +378,9 @@ export async function emitVitePressWorkspace(
     renderPackageJson(workspace.siteMeta.title),
     "utf8",
   );
+  await writeFile(join(options.outputDir, "pnpm-workspace.yaml"), renderPnpmWorkspaceYaml(), "utf8");
   await writeFile(join(vitepressDir, "config.ts"), renderWorkspaceConfig(workspace), "utf8");
+  await writeVitePressTheme(vitepressDir);
   await writeFile(join(docsDir, "index.md"), renderWorkspaceIndexPage(workspace), "utf8");
 
   let pageCount = 0;

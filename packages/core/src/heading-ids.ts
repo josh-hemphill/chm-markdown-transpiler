@@ -1,3 +1,4 @@
+import { splitMarkdownSegments } from "./escape-html.js";
 import type { HeadingIdEntry } from "@chm-md/shared";
 import type { MarkdownStyleProfile } from "./style-profile.js";
 
@@ -92,7 +93,13 @@ export function postProcessMarkdown(
 
   if (profile.expandTabs) {
     const spaces = " ".repeat(profile.tabWidth);
-    body = body.replace(/\t/g, spaces);
+    body = splitMarkdownSegments(body)
+      .map((segment) =>
+        segment.type === "fenced-code" || segment.type === "inline-code"
+          ? segment.content
+          : segment.content.replace(/\t/g, spaces),
+      )
+      .join("");
   }
 
   if (profile.trimTrailingWhitespace) {

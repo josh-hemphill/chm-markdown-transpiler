@@ -49,4 +49,10 @@ describe("postProcessMarkdown", () => {
     const profile = { ...defaultStyleProfile(), expandTabs: true, tabWidth: 2 };
     expect(postProcessMarkdown("a\tb", profile)).toBe("a  b\n");
   });
+
+  it("preserves tabs inside fenced code blocks", () => {
+    const profile = { ...defaultStyleProfile(), expandTabs: true, tabWidth: 4 };
+    const input = "Intro\n\n```text\nline\tone\n```\n";
+    expect(postProcessMarkdown(input, profile)).toBe(input.endsWith("\n") ? input : `${input}\n`);
+  });
 });

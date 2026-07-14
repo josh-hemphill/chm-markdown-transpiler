@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseHTML } from "linkedom";
 import type { ConversionWarning } from "@chm-md/shared";
-import { neutralizeJavascriptLinks, preprocessCodeSnippets } from "./code-snippets.js";
+import { neutralizeJavascriptLinks, preprocessCodeBlocks, preprocessCodeSnippets } from "./code-snippets.js";
 
 describe("preprocessCodeSnippets", () => {
   it("converts MSDN tabbed snippets into labeled code blocks", () => {
@@ -31,6 +31,34 @@ describe("preprocessCodeSnippets", () => {
     expect(document.body?.textContent).toContain("VB");
     expect(document.body?.innerHTML).toContain("language-csharp");
     expect(document.body?.innerHTML).toContain("Triple&lt;TFirst&gt;");
+  });
+});
+
+describe("preprocessCodeBlocks", () => {
+  it("promotes courier font spans to inline code", () => {
+    const { document } = parseHTML(
+      `<!DOCTYPE html><html><body><font face="Courier New">List&lt;string&gt;</font></body></html>`,
+    );
+    preprocessCodeBlocks(document);
+    expect(document.querySelector("font")).toBeNull();
+    expect(document.querySelector("code")?.textContent).toBe("List<string>");
+  });
+
+  it("promotes tabbed monospace content to fenced pre/code", () => {
+    const { document } = parseHTML(
+      `<!DOCTYPE html><html><body><pre>line\tone\nline two</pre></body></html>`,
+    );
+    preprocessCodeBlocks(document);
+    const pre = document.querySelector("pre");
+    expect(pre?.querySelector("code")?.textContent).toContain("\t");
+  });
+
+  it("promotes bare pre elements to pre/code", () => {
+    const { document } = parseHTML(
+      `<!DOCTYPE html><html><body><pre>Console.WriteLine();</pre></body></html>`,
+    );
+    preprocessCodeBlocks(document);
+    expect(document.querySelector("pre code")?.textContent).toBe("Console.WriteLine();");
   });
 });
 
