@@ -13,7 +13,7 @@
     ]
   ],
   "access": "public",
-  "baseBranch": "main",
+  "baseBranch": "latest",
   "updateInternalDependencies": "patch",
   "ignore": []
 }
